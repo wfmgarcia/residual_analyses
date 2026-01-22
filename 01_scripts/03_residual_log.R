@@ -38,6 +38,7 @@ site_summary <- usf_data %>%
     Network.Role  = first(Network.Role),
     mean_precip_mm = first(mean_precip_mm),
     mean_slope_deg = first(mean_slope_deg),
+    mean_aspect_deg = first(mean_aspect_deg),
     across(all_of(c("Q", mass_cols)), ~mean(.x, na.rm = TRUE), .names = "{.col}_mean"),
     .groups = "drop")%>%
   mutate(
@@ -103,7 +104,7 @@ for(solute in names(lm_list)) {
 res_cols <- grep("^res_", names(usf_data_log), value = TRUE)
 
 residual_summary <- usf_data_log %>%
-  group_by(Site, location, Area.m2, Network.Role, mean_precip_mm, mean_slope_deg) %>%
+  group_by(Site, location, Area.m2, Network.Role, mean_precip_mm, mean_slope_deg, mean_aspect_deg) %>%
   summarise(
     across(all_of(res_cols),
            list(mean = ~ mean(.x, na.rm = TRUE),
