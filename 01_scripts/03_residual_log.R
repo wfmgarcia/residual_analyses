@@ -1,4 +1,4 @@
-#This script is used to calculate residuals for the USF project water chemistry data.
+# This script is used to calculate residuals for the USF project water chemistry data.
 
 # Load Packages
 library(tidyverse)
@@ -10,16 +10,15 @@ library(viridis)
 library(openxlsx)
 library(ggpmisc)
 
-
 ##### Read in data and compute log-residuals per campaign
 
 # --- Read CSV and initial filtering ---
-usf_data <- read.csv("02_data/usf_data.csv") %>%
-  filter(!is.na(Q), Campaign > 6) %>%     # remove incomplete campaigns
-  group_by(Site) %>%
+usf_data <- read.csv("02_data/combined_data.csv") %>%
+  filter(!is.na(q), campaign > 6) %>%     # remove incomplete campaigns
+  group_by(site) %>%
   filter(n() > 2) %>%                     # remove sites with ≤2 observations
   ungroup() %>%
-  select(-contains("mg"), -contains("ug")) # keep only characterizations and solute mass
+  select(-contains("mg"), -contains("ug"))
 
 
 # --- List of solute mass columns ---
@@ -28,33 +27,38 @@ mass_cols <- c("npoc_mass", "no3_mass", "tdn_mass",
                "k_mass","ca_mass", "tss_mass", "afdm_mass")
 
 
-
 # --- Compute site-level mean per solute and Q (for regression) ---
 site_summary <- usf_data %>%
-  group_by(Site) %>%
+  group_by(site) %>%
   summarise(
-    Area.m2       = first(Area.m2),
-    location      = first(location),
-    Network.Role  = first(Network.Role),
-    mean_precip_mm = first(mean_precip_mm),
-    mean_slope_deg = first(mean_slope_deg),
-    mean_aspect_deg = first(mean_aspect_deg),
-    across(all_of(c("Q", mass_cols)), ~mean(.x, na.rm = TRUE), .names = "{.col}_mean"),
-    .groups = "drop")%>%
+    area_m2        = first(area_m2),
+    location       = first(location),
+    network_role   = first(network_role),
+    mean_precip_mm = first(mean_annual_ppt_mm),
+    mean_slope_deg = first(mean_slope),
+    mean_aspect_deg = first(mean_aspect),
+    
+    across(all_of(c("q", mass_cols)),
+           ~mean(.x, na.rm = TRUE),
+           .names = "{.col}_mean"),
+    .groups = "drop"
+  ) %>%
   mutate(
-    logArea  = log10(Area.m2),
-    logQ     = log10(Q_mean),
-    logNPOC  = log10(npoc_mass_mean),
-    logNO3   = log10(no3_mass_mean),
-    logTDN   = log10(tdn_mass_mean),
-    logPO4   = log10(po4_mass_mean),
-    logCl    = log10(cl_mass_mean),
-    logSO4   = log10(so4_mass_mean),
-    logNa    = log10(na_mass_mean),
-    logK     = log10(k_mass_mean),
-    logTSS   = log10(tss_mass_mean),
-    logAFDM  = log10(afdm_mass_mean)
+    logArea = log10(area_m2),
+    
+    logQ    = log10(ifelse(q_mean > 0, q_mean, NA)),
+    logNPOC = log10(ifelse(npoc_mass_mean > 0, npoc_mass_mean, NA)),
+    logNO3  = log10(ifelse(no3_mass_mean > 0, no3_mass_mean, NA)),
+    logTDN  = log10(ifelse(tdn_mass_mean > 0, tdn_mass_mean, NA)),
+    logPO4  = log10(ifelse(po4_mass_mean > 0, po4_mass_mean, NA)),
+    logCl   = log10(ifelse(cl_mass_mean > 0, cl_mass_mean, NA)),
+    logSO4  = log10(ifelse(so4_mass_mean > 0, so4_mass_mean, NA)),
+    logNa   = log10(ifelse(na_mass_mean > 0, na_mass_mean, NA)),
+    logK    = log10(ifelse(k_mass_mean > 0, k_mass_mean, NA)),
+    logTSS  = log10(ifelse(tss_mass_mean > 0, tss_mass_mean, NA)),
+    logAFDM = log10(ifelse(afdm_mass_mean > 0, afdm_mass_mean, NA))
   )
+
 
 # --- Fit log-log linear models ---
 lm_list <- list(
@@ -71,32 +75,62 @@ lm_list <- list(
   logAFDM = lm(logAFDM ~ logArea, data = site_summary)
 )
 
+
+# --- Graph example (DOC) ---
+ggplot(site_summary, aes(x = logArea, y = logNPOC)) +
+  geom_point(size = 3) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  stat_poly_eq(
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    formula = y ~ x,
+    parse = TRUE,
+    size = 5
+  ) +
+  labs(
+    x = expression(Log[10]~Subcatchment~Area~(m^2)),
+    y = expression(Log[10]~Site~Avg.~DOC~Mass),
+    title = "Log–Log Relationship Between Site-Averaged DOC Mass \nand Subcatchment Area"
+  ) +
+  theme_classic(base_size = 14)
+
+
+# Save plot
+ggsave(
+  filename = "04_figures/linear_models/DOC_regression_LOG.png",
+  plot = last_plot(),
+  width = 6, height = 4, dpi = 300
+)
+
+
 # --- Add log-transformed values to full dataset ---
 usf_data_log <- usf_data %>%
   mutate(
-    logQ     = log10(Q),
-    logNPOC  = log10(npoc_mass),
-    logNO3   = log10(no3_mass),
-    logTDN   = log10(tdn_mass),
-    logPO4   = log10(po4_mass),
-    logCl    = log10(cl_mass),
-    logSO4   = log10(so4_mass),
-    logNa    = log10(na_mass),
-    logK     = log10(k_mass),
-    logTSS   = log10(tss_mass),
-    logAFDM  = log10(afdm_mass)
+    logArea = log10(area_m2),
+    
+    logQ    = log10(ifelse(q > 0, q, NA)),
+    logNPOC = log10(ifelse(npoc_mass > 0, npoc_mass, NA)),
+    logNO3  = log10(ifelse(no3_mass > 0, no3_mass, NA)),
+    logTDN  = log10(ifelse(tdn_mass > 0, tdn_mass, NA)),
+    logPO4  = log10(ifelse(po4_mass > 0, po4_mass, NA)),
+    logCl   = log10(ifelse(cl_mass > 0, cl_mass, NA)),
+    logSO4  = log10(ifelse(so4_mass > 0, so4_mass, NA)),
+    logNa   = log10(ifelse(na_mass > 0, na_mass, NA)),
+    logK    = log10(ifelse(k_mass > 0, k_mass, NA)),
+    logTSS  = log10(ifelse(tss_mass > 0, tss_mass, NA)),
+    logAFDM = log10(ifelse(afdm_mass > 0, afdm_mass, NA))
   )
 
-# Ensure logArea exists
-usf_data_log <- usf_data_log %>% mutate(logArea = log10(Area.m2))
 
-# Compute predicted values and residuals
+# --- Predict values + residuals ---
 for(solute in names(lm_list)) {
+  
   pred_name <- paste0("PL_", solute)
   res_name  <- paste0("res_", solute)
   
   usf_data_log[[pred_name]] <- predict(lm_list[[solute]], newdata = usf_data_log)
-  usf_data_log[[res_name]]  <- usf_data_log[[paste0("log", substr(solute, 4, nchar(solute)) )]] - usf_data_log[[pred_name]]
+  
+  usf_data_log[[res_name]] <-
+    usf_data_log[[solute]] - usf_data_log[[pred_name]]
 }
 
 
@@ -104,15 +138,21 @@ for(solute in names(lm_list)) {
 res_cols <- grep("^res_", names(usf_data_log), value = TRUE)
 
 residual_summary <- usf_data_log %>%
-  group_by(Site, location, Area.m2, Network.Role, mean_precip_mm, mean_slope_deg, mean_aspect_deg) %>%
+  group_by(site, location, area_m2, network_role,
+           mean_annual_ppt_mm, mean_slope, mean_aspect) %>%
   summarise(
     across(all_of(res_cols),
-           list(mean = ~ mean(.x, na.rm = TRUE),
-                SE   = ~ sd(.x, na.rm = TRUE) / sqrt(n())),
-           .names = "{.col}_{.fn}"),
+           list(
+             mean = ~mean(.x, na.rm = TRUE),
+             se   = ~sd(.x, na.rm = TRUE) / sqrt(sum(!is.na(.x)))
+           ),
+           .names = "{.col}_{.fn}"
+    ),
     .groups = "drop"
   )
 
-# --- Save final residual dataset ---
-write.csv(residual_summary, "03_results/residual_log.csv", row.names = FALSE)
 
+# --- Save final residual dataset ---
+write.csv(residual_summary,
+          "03_results/residual_log.csv",
+          row.names = FALSE)
